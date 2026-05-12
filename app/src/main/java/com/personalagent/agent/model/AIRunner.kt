@@ -81,7 +81,7 @@ class AIRunner(
             val output = runInference(parsed.subtype, parsed.input)
             latencyMs = System.currentTimeMillis() - startMs
 
-            Timber.i("AIRunner: inference complete subtype=%s latency=%dms", subtype, latencyMs)
+            Timber.i("AIRunner: inference complete subtype=%s latency=%dms", parsed.subtype, latencyMs)
             true
         } catch (e: Exception) {
             Timber.e(e, "AIRunner: task failed id=%s", task.id)
