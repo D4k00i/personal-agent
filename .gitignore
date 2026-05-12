@@ -30,6 +30,15 @@ Thumbs.db
 # Generated
 *.log
 
+# Model files (too large for git)
+*.onnx
+*.tflite
+*.bin
+*.safetensors
+*.pth
+*.pt
+*.ckpt
+
 # Gradle wrapper (keep the wrapper jar & props, ignore zip)
 gradle/wrapper/gradle-wrapper.jar
 !gradle/wrapper/gradle-wrapper.jar

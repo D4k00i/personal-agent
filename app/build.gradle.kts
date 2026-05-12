@@ -53,4 +53,7 @@ dependencies {
 
     // Logging
     implementation(libs.timber)
+
+    // ONNX Runtime — AI model inference
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 }

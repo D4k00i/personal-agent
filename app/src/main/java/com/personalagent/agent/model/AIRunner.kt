@@ -20,16 +20,17 @@ import kotlin.random.Random
  * 5. Build result payload with output, model name, and latency.
  *
  * ## Inference subtypes
- * | Subtype    | Description                         | Stub result                         |
- * |------------|-------------------------------------|-------------------------------------|
- * | translate  | Seq2seq translation (vi↔en)        | "[STUB] translated: {input}"        |
- * | vision     | Image classification / OCR          | "[STUB] vision result: ..."         |
- * | sql        | Text-to-SQL generation              | "SELECT * FROM stub_table WHERE..."  |
- * | code       | Code generation                     | "// [STUB] generated code for: ..." |
- * | math       | Mathematical problem solving        | "[STUB] answer: 42"                 |
+ * | Subtype          | Description                              | Stub output                        |
+ * |------------------|------------------------------------------|------------------------------------|
+ * | translate_vi_en  | Seq2seq translation Vietnamese→English  | "[STUB] translated (vi→en): ..."   |
+ * | translate_en_vi  | Seq2seq translation English→Vietnamese  | "[STUB] translated (en→vi): ..."   |
+ * | vision           | Image classification / OCR               | "[STUB] vision result: ..."        |
+ * | sql              | Text-to-SQL generation                   | "SELECT * FROM stub_table WHERE..."|
+ * | code             | Code generation                          | "// [STUB] generated code for: ..."|
+ * | math             | Mathematical problem solving             | "[STUB] answer: 42"               |
  *
  * In Sprint 2, inference uses stubs with realistic latency (1-3s).
- * Real TFLite/ONNX execution will be wired in Phase 3 when model files are available.
+ * Real ONNX execution will be wired in Phase 3 when inference logic is implemented.
  *
  * @property context Android context (reserved for future model file access).
  * @property task The AI-type task to execute.
@@ -68,7 +69,7 @@ class AIRunner(
             }
 
             // 3. Load model through cache (health gate + LRU).
-            val model = try {
+            try {
                 ModelCache.getInstance().get(context, meta)
             } catch (e: ModelCache.ModelLoadException) {
                 Timber.e(e, "AIRunner: health gate blocked model=%s", meta.name)
@@ -77,10 +78,9 @@ class AIRunner(
 
             // 4. Run inference.
             val subtype = JSONObject(task.payloadJson).optString("subtype", "").lowercase()
-            val params = parseParams()
 
             val startMs = System.currentTimeMillis()
-            val output = runInference(subtype, input, params)
+            val output = runInference(subtype, input)
             latencyMs = System.currentTimeMillis() - startMs
 
             Timber.i("AIRunner: inference complete subtype=%s latency=%dms", subtype, latencyMs)
@@ -145,37 +145,21 @@ class AIRunner(
         }
     }
 
-    private fun parseParams(): Map<String, String> {
-        return try {
-            val paramsJson = JSONObject(task.payloadJson).optJSONObject("params") ?: return emptyMap()
-            val map = mutableMapOf<String, String>()
-            paramsJson.keys().forEach { key ->
-                map[key] = paramsJson.optString(key, "")
-            }
-            map
-        } catch (_: Exception) {
-            emptyMap()
-        }
-    }
-
     // ---- Inference stubs ----
 
     /**
      * Dispatches inference to the appropriate stub based on [subtype].
      *
      * Each stub simulates a realistic processing delay and returns a
-     * placeholder result. Real TFLite/ONNX calls will replace these stubs
-     * in Phase 3 when model files are downloaded to the device.
+     * placeholder result. Real ONNX calls will replace these stubs
+     * in Phase 3 when inference logic is implemented.
      */
-    private suspend fun runInference(
-        subtype: String,
-        input: String,
-        params: Map<String, String>,
-    ): String {
+    private suspend fun runInference(subtype: String, input: String): String {
         Timber.d("AIRunner: inference MOCK subtype=%s inputLen=%d", subtype, input.length)
 
         lastOutput = when (subtype) {
-            "translate" -> stubTranslate(input, params)
+            "translate_vi_en" -> stubTranslateViEn(input)
+            "translate_en_vi" -> stubTranslateEnVi(input)
             "vision" -> stubVision(input)
             "sql" -> stubTextToSQL(input)
             "code" -> stubCodeGen(input)
@@ -191,11 +175,14 @@ class AIRunner(
 
     // ---- Subtype stubs ----
 
-    private suspend fun stubTranslate(input: String, params: Map<String, String>): String {
+    private suspend fun stubTranslateViEn(input: String): String {
         delay(1_000L + Random.nextLong(2_000L)) // 1-3s realistic latency
-        val src = params["sourceLang"] ?: "auto"
-        val tgt = params["targetLang"] ?: "en"
-        return "[STUB] translated ($src→$tgt): ${input.take(80)}"
+        return "[STUB] translated (vi→en): ${input.take(80)}"
+    }
+
+    private suspend fun stubTranslateEnVi(input: String): String {
+        delay(1_000L + Random.nextLong(2_000L)) // 1-3s realistic latency
+        return "[STUB] translated (en→vi): ${input.take(80)}"
     }
 
     private suspend fun stubVision(input: String): String {

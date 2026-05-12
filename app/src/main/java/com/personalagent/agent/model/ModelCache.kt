@@ -1,12 +1,13 @@
 package com.personalagent.agent.model
 
+import ai.onnxruntime.OrtSession
 import android.content.Context
 import com.personalagent.health.HealthCollector
 import timber.log.Timber
 import java.util.LinkedHashMap
 
 /**
- * Thread-safe LRU cache for loaded AI models with health-aware admission control.
+ * Thread-safe LRU cache for loaded ONNX models with health-aware admission control.
  *
  * ## Memory budget
  * Total: [maxMemoryBytes] = 4 GB. Resident models (~1.1 GB) are excluded from eviction.
@@ -21,7 +22,7 @@ import java.util.LinkedHashMap
  * ```
  * val cache = ModelCache.getInstance()
  * cache.preloadResidentModels(context)           // called once at startup
- * val model = cache.get(context, meta)            // auto load/evict
+ * val session = cache.get(context, meta)         // auto load/evict → OrtSession?
  * val stats = cache.getStats()                    // CacheStats(...)
  * ```
  *
@@ -43,18 +44,18 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
     // ---- Public API ----
 
     /**
-     * Returns a loaded model, loading it through the cache if necessary.
+     * Returns a loaded ONNX session, loading it through the cache if necessary.
      *
      * Applies health gate and memory eviction before loading. Resident models
      * are returned immediately (must be preloaded via [preloadResidentModels]).
      *
-     * @param context Android context for health snapshot.
+     * @param context Android context for health snapshot and asset access.
      * @param meta Model metadata from [ModelRegistry].
-     * @return The loaded model object (stub: null when asset files are missing).
+     * @return The loaded [OrtSession], or null if the model file is missing (stub mode).
      * @throws ModelLoadException if health gate blocks loading.
      */
     @Synchronized
-    fun get(context: Context, meta: ModelMeta): Any? {
+    fun get(context: Context, meta: ModelMeta): OrtSession? {
         val key = meta.name
 
         // Check cache first.
@@ -63,7 +64,7 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
             // Re-insert to bump LRU position.
             loadedModels.remove(key)
             loadedModels[key] = cached
-            return cached.model
+            return cached.session
         }
 
         Timber.d("ModelCache: miss model=%s (%.0fMB), loading...", key, meta.sizeBytes.toDouble() / MB)
@@ -95,17 +96,17 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
         }
 
         // ---- Load model ----
-        val model = ModelLoader.load(meta)
-        if (model == null && !meta.resident) {
+        val session = ModelLoader.load(context, meta)
+        if (session == null && !meta.resident) {
             // On-demand model file missing → stub, don't cache the failure.
             Timber.w("ModelCache: model file not available for %s (stub mode)", key)
             return null
         }
 
-        // Cache the loaded model.
+        // Cache the loaded session.
         val loaded = LoadedModel(
             meta = meta,
-            model = model,
+            session = session,
             loadedAtMs = System.currentTimeMillis(),
         )
         loadedModels[key] = loaded
@@ -114,11 +115,11 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
             residentMemoryBytes += needed
         }
 
-        val status = if (model != null) "loaded" else "stubbed"
+        val status = if (session != null) "loaded" else "stubbed"
         Timber.i("ModelCache: %s model=%s (%.0fMB, total=%.0fMB, resident=%.0fMB)",
             status, key, needed.toDouble() / MB,
             currentMemoryBytes.toDouble() / MB, residentMemoryBytes.toDouble() / MB)
-        return model
+        return session
     }
 
     /**
@@ -167,7 +168,7 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
     }
 
     /**
-     * Evicts all non-resident models.
+     * Evicts all non-resident models and frees their native ONNX sessions.
      */
     @Synchronized
     fun evictAll() {
@@ -178,6 +179,10 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
                 Timber.i("ModelCache: evicting model=%s (%.0fMB)", entry.key,
                     entry.value.meta.sizeBytes.toDouble() / MB)
                 currentMemoryBytes -= entry.value.meta.sizeBytes
+                // Free the ONNX session native memory.
+                entry.value.session?.let { session ->
+                    try { session.close() } catch (_: Exception) {}
+                }
                 iter.remove()
             }
         }
@@ -204,6 +209,10 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
             evictedModels.add(entry.key)
             Timber.i("ModelCache: evicted model=%s (%.0fMB)",
                 entry.key, entry.value.meta.sizeBytes.toDouble() / MB)
+            // Free the ONNX session native memory.
+            entry.value.session?.let { session ->
+                try { session.close() } catch (_: Exception) {}
+            }
             iter.remove()
             currentMemoryBytes -= entry.value.meta.sizeBytes
         }
@@ -233,7 +242,7 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
 
     private data class LoadedModel(
         val meta: ModelMeta,
-        val model: Any?,
+        val session: OrtSession?,
         val loadedAtMs: Long,
     )
 

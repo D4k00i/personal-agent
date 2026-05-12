@@ -13,7 +13,8 @@ import java.util.UUID
  * ## Usage (development only)
  * ```
  * val dao = WorkerApp.db.personalTaskDao()
- * AiTestHelper.insertTranslateTask(dao, "xin chào", "vi", "en")
+ * AiTestHelper.insertTranslateViEnTask(dao, "xin chào")
+ * AiTestHelper.insertTranslateEnViTask(dao, "hello")
  * AiTestHelper.insertVisionTask(dao, "classify_cat.jpg")
  * AiTestHelper.insertSqlTask(dao, "all active users")
  * AiTestHelper.insertCodeTask(dao, "sort list descending")
@@ -29,29 +30,44 @@ object AiTestHelper {
     var enabled: Boolean = false
 
     /**
-     * Inserts a translation test task (AI → translate).
+     * Inserts a Vietnamese→English translation test task (AI → translate_vi_en).
      *
      * @param dao The PersonalTaskDao from the database.
-     * @param text Text to translate.
-     * @param sourceLang Source language code (default "vi").
-     * @param targetLang Target language code (default "en").
+     * @param text Text to translate from Vietnamese.
      */
-    fun insertTranslateTask(
-        dao: PersonalTaskDao,
-        text: String,
-        sourceLang: String = "vi",
-        targetLang: String = "en",
-    ) {
+    fun insertTranslateViEnTask(dao: PersonalTaskDao, text: String) {
         if (!enabled) {
-            Timber.d("AiTestHelper: disabled — skipping translate task")
+            Timber.d("AiTestHelper: disabled — skipping translate_vi_en task")
             return
         }
         val payload = JSONObject().apply {
-            put("subtype", "translate")
+            put("subtype", "translate_vi_en")
             put("input", text)
             put("params", JSONObject().apply {
-                put("sourceLang", sourceLang)
-                put("targetLang", targetLang)
+                put("sourceLang", "vi")
+                put("targetLang", "en")
+            })
+        }
+        insert(dao, payload)
+    }
+
+    /**
+     * Inserts an English→Vietnamese translation test task (AI → translate_en_vi).
+     *
+     * @param dao The PersonalTaskDao from the database.
+     * @param text Text to translate from English.
+     */
+    fun insertTranslateEnViTask(dao: PersonalTaskDao, text: String) {
+        if (!enabled) {
+            Timber.d("AiTestHelper: disabled — skipping translate_en_vi task")
+            return
+        }
+        val payload = JSONObject().apply {
+            put("subtype", "translate_en_vi")
+            put("input", text)
+            put("params", JSONObject().apply {
+                put("sourceLang", "en")
+                put("targetLang", "vi")
             })
         }
         insert(dao, payload)
