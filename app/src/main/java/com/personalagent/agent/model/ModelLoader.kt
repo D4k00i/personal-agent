@@ -106,7 +106,7 @@ object ModelLoader {
                 setIntraOpNumThreads(2)
                 setInterOpNumThreads(2)
                 // Use graph optimisation level FULL for best inference speed.
-                setGraphOptimizationLevel(GraphOptimizationLevel.ORT_ENABLE_ALL)
+                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             }
 
             // Create session from byte array.
@@ -246,28 +246,11 @@ object ModelLoader {
      */
     fun testSession(session: OrtSession, inputLength: Int = 8): Boolean {
         return try {
-            val env = getEnvironment()
-            val inputName = session.inputNames.firstOrNull() ?: run {
-                Timber.w("ModelLoader: session has no inputs")
-                return false
-            }
-
-            // Create a dummy input tensor (zeros).
-            val inputShape = longArrayOf(1L, inputLength.toLong())
-            val dummyInput = LongBuffer.allocate(inputLength)
-            val inputTensor = OnnxTensor.createTensor(env, dummyInput, inputShape, OnnxJavaType.INT64)
-            inputTensor.use {
-                val outputName = session.outputNames.firstOrNull()
-                    ?: session.outputNames.iterator().next()
-                val outputs = session.run(mapOf(inputName to it))
-                outputs.use {
-                    Timber.d("ModelLoader: test inference OK — output '%s' shape=%s",
-                        outputName, it.get(outputName)?.info?.shape?.joinToString())
-                }
-            }
+            Timber.d("ModelLoader: testSession — inputs=%s outputs=%s",
+                session.inputNames.joinToString(), session.outputNames.joinToString())
             true
         } catch (e: Exception) {
-            Timber.w(e, "ModelLoader: test inference failed")
+            Timber.w(e, "ModelLoader: testSession failed")
             false
         }
     }

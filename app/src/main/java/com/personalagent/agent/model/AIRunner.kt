@@ -59,7 +59,7 @@ class AIRunner(
             Timber.i("AIRunner: starting task id=%s", task.id)
 
             // 1. Parse payload.
-            val input = parsePayload() ?: return@withContext false
+            val parsed = parsePayload() ?: return@withContext false
 
             // 2. Resolve model.
             val meta = ModelRegistry.resolve("AI", task.payloadJson)
@@ -77,10 +77,8 @@ class AIRunner(
             }
 
             // 4. Run inference.
-            val subtype = JSONObject(task.payloadJson).optString("subtype", "").lowercase()
-
             val startMs = System.currentTimeMillis()
-            val output = runInference(subtype, input)
+            val output = runInference(parsed.subtype, parsed.input)
             latencyMs = System.currentTimeMillis() - startMs
 
             Timber.i("AIRunner: inference complete subtype=%s latency=%dms", subtype, latencyMs)

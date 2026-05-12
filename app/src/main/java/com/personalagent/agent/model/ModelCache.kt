@@ -3,6 +3,7 @@ package com.personalagent.agent.model
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import com.personalagent.health.HealthCollector
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.util.LinkedHashMap
 
@@ -96,7 +97,7 @@ class ModelCache(private val maxMemoryBytes: Long = 4L * 1024 * 1024 * 1024) {
         }
 
         // ---- Load model ----
-        val session = ModelLoader.load(context, meta)
+        val session = runBlocking { ModelLoader.load(context, meta) }
         if (session == null && !meta.resident) {
             // On-demand model file missing → stub, don't cache the failure.
             Timber.w("ModelCache: model file not available for %s (stub mode)", key)
