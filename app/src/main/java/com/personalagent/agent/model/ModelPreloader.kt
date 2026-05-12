@@ -220,11 +220,11 @@ object ModelPreloader {
     private fun selectModelsForTimeWindow(now: LocalTime): List<ModelMeta> {
         return when {
             // Morning: 06:00–10:00 — translate model
-            now in MORNING_START until MORNING_END -> {
+            now >= MORNING_START && now < MORNING_END -> {
                 listOfNotNull(ModelRegistry.getByName("hy-mt1.5"))
             }
             // Evening: 18:00–22:00 — vision model
-            now in EVENING_START until EVENING_END -> {
+            now >= EVENING_START && now < EVENING_END -> {
                 listOfNotNull(ModelRegistry.getByName("florence-2"))
             }
             // Night: 22:00–06:00 — code + math (heavy, health-gated)
@@ -240,8 +240,8 @@ object ModelPreloader {
     }
 
     private fun timeWindowName(now: LocalTime): String = when {
-        now in MORNING_START until MORNING_END -> "morning"
-        now in EVENING_START until EVENING_END -> "evening"
+        now >= MORNING_START && now < MORNING_END -> "morning"
+        now >= EVENING_START && now < EVENING_END -> "evening"
         now >= EVENING_END || now < MORNING_START -> "night"
         else -> "day"
     }
