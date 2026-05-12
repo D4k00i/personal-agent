@@ -1,0 +1,224 @@
+package com.personalagent.agent.model
+
+import android.content.Context
+import com.personalagent.agent.PersonalTask
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import timber.log.Timber
+import kotlin.random.Random
+
+/**
+ * Inference dispatcher for AI-type tasks.
+ *
+ * ## Pipeline
+ * 1. Parse [PersonalTask.payloadJson] → extract `subtype` and `input`.
+ * 2. Resolve model via [ModelRegistry.resolve].
+ * 3. Load model via [ModelCache.get] (health gate + LRU).
+ * 4. Run subtype-specific inference.
+ * 5. Build result payload with output, model name, and latency.
+ *
+ * ## Inference subtypes
+ * | Subtype    | Description                         | Stub result                         |
+ * |------------|-------------------------------------|-------------------------------------|
+ * | translate  | Seq2seq translation (vi↔en)        | "[STUB] translated: {input}"        |
+ * | vision     | Image classification / OCR          | "[STUB] vision result: ..."         |
+ * | sql        | Text-to-SQL generation              | "SELECT * FROM stub_table WHERE..."  |
+ * | code       | Code generation                     | "// [STUB] generated code for: ..." |
+ * | math       | Mathematical problem solving        | "[STUB] answer: 42"                 |
+ *
+ * In Sprint 2, inference uses stubs with realistic latency (1-3s).
+ * Real TFLite/ONNX execution will be wired in Phase 3 when model files are available.
+ *
+ * @property context Android context (reserved for future model file access).
+ * @property task The AI-type task to execute.
+ *
+ * @see ModelRegistry
+ * @see ModelCache
+ * @see TaskExecutor
+ */
+class AIRunner(
+    private val context: Context,
+    private val task: PersonalTask,
+) {
+    /** Duration of the inference call in milliseconds. Set during [execute]. */
+    var latencyMs: Long = 0
+        private set
+
+    // ---- Public API ----
+
+    /**
+     * Executes the AI inference pipeline on [Dispatchers.IO].
+     *
+     * @return true on success, false if any step failed (parse, resolve, load, or inference).
+     */
+    suspend fun execute(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Timber.i("AIRunner: starting task id=%s", task.id)
+
+            // 1. Parse payload.
+            val input = parsePayload() ?: return@withContext false
+
+            // 2. Resolve model.
+            val meta = ModelRegistry.resolve("AI", task.payloadJson)
+            if (meta == null) {
+                Timber.e("AIRunner: no model found for task id=%s", task.id)
+                return@withContext false
+            }
+
+            // 3. Load model through cache (health gate + LRU).
+            val model = try {
+                ModelCache.getInstance().get(context, meta)
+            } catch (e: ModelCache.ModelLoadException) {
+                Timber.e(e, "AIRunner: health gate blocked model=%s", meta.name)
+                return@withContext false
+            }
+
+            // 4. Run inference.
+            val subtype = JSONObject(task.payloadJson).optString("subtype", "").lowercase()
+            val params = parseParams()
+
+            val startMs = System.currentTimeMillis()
+            val output = runInference(subtype, input, params)
+            latencyMs = System.currentTimeMillis() - startMs
+
+            Timber.i("AIRunner: inference complete subtype=%s latency=%dms", subtype, latencyMs)
+            true
+        } catch (e: Exception) {
+            Timber.e(e, "AIRunner: task failed id=%s", task.id)
+            false
+        }
+    }
+
+    /**
+     * Builds the result payload JSON containing the inference output.
+     * Call after a successful [execute].
+     */
+    fun buildResultPayload(): String {
+        val subtype = JSONObject(task.payloadJson).optString("subtype", "").lowercase()
+        val meta = ModelRegistry.resolve("AI", task.payloadJson)
+        val modelName = meta?.name ?: "unknown"
+
+        return JSONObject().apply {
+            put("output", lastOutput)
+            put("model", modelName)
+            put("latencyMs", latencyMs)
+            put("subtype", subtype)
+            put("summary", "$subtype: $lastOutput".take(120))
+        }.toString()
+    }
+
+    // ---- Private ----
+
+    private var lastOutput: String = ""
+
+    private data class ParsedInput(
+        val subtype: String,
+        val input: String,
+    )
+
+    /**
+     * Parses the task payload and extracts the subtype + input text.
+     * Required fields: `subtype`, `input`.
+     */
+    private fun parsePayload(): ParsedInput? {
+        return try {
+            val json = JSONObject(task.payloadJson)
+            val subtype = json.optString("subtype", "").lowercase()
+            val input = json.optString("input", "")
+
+            if (subtype.isEmpty()) {
+                Timber.e("AIRunner: payload missing subtype, task id=%s", task.id)
+                return null
+            }
+            if (input.isEmpty()) {
+                Timber.e("AIRunner: payload missing input, task id=%s", task.id)
+                return null
+            }
+
+            Timber.d("AIRunner: parsed subtype=%s inputLen=%d", subtype, input.length)
+            ParsedInput(subtype, input)
+        } catch (e: Exception) {
+            Timber.e(e, "AIRunner: failed to parse payload json for task id=%s", task.id)
+            null
+        }
+    }
+
+    private fun parseParams(): Map<String, String> {
+        return try {
+            val paramsJson = JSONObject(task.payloadJson).optJSONObject("params") ?: return emptyMap()
+            val map = mutableMapOf<String, String>()
+            paramsJson.keys().forEach { key ->
+                map[key] = paramsJson.optString(key, "")
+            }
+            map
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    // ---- Inference stubs ----
+
+    /**
+     * Dispatches inference to the appropriate stub based on [subtype].
+     *
+     * Each stub simulates a realistic processing delay and returns a
+     * placeholder result. Real TFLite/ONNX calls will replace these stubs
+     * in Phase 3 when model files are downloaded to the device.
+     */
+    private suspend fun runInference(
+        subtype: String,
+        input: String,
+        params: Map<String, String>,
+    ): String {
+        Timber.d("AIRunner: inference MOCK subtype=%s inputLen=%d", subtype, input.length)
+
+        lastOutput = when (subtype) {
+            "translate" -> stubTranslate(input, params)
+            "vision" -> stubVision(input)
+            "sql" -> stubTextToSQL(input)
+            "code" -> stubCodeGen(input)
+            "math" -> stubMath(input)
+            else -> {
+                Timber.w("AIRunner: unknown subtype=%s, using generic stub", subtype)
+                "[STUB] unknown subtype '$subtype'"
+            }
+        }
+
+        return lastOutput
+    }
+
+    // ---- Subtype stubs ----
+
+    private suspend fun stubTranslate(input: String, params: Map<String, String>): String {
+        delay(1_000L + Random.nextLong(2_000L)) // 1-3s realistic latency
+        val src = params["sourceLang"] ?: "auto"
+        val tgt = params["targetLang"] ?: "en"
+        return "[STUB] translated ($src→$tgt): ${input.take(80)}"
+    }
+
+    private suspend fun stubVision(input: String): String {
+        delay(500L + Random.nextLong(1_500L)) // 0.5-2s
+        return "[STUB] vision: detected 'cat' (confidence=0.94) in image"
+    }
+
+    private suspend fun stubTextToSQL(input: String): String {
+        delay(1_500L + Random.nextLong(2_000L)) // 1.5-3.5s
+        return "SELECT id, name, created_at FROM stub_table WHERE status = 'active' ORDER BY created_at DESC LIMIT 10;"
+    }
+
+    private suspend fun stubCodeGen(input: String): String {
+        delay(2_000L + Random.nextLong(3_000L)) // 2-5s
+        return "// [STUB] generated Kotlin function for: ${input.take(50)}\n" +
+            "fun process(input: String): String {\n" +
+            "    // TODO: implement logic\n" +
+            "    return input.reversed()\n" +
+            "}"
+    }
+
+    private suspend fun stubMath(input: String): String {
+        delay(500L + Random.nextLong(1_000L)) // 0.5-1.5s
+        return "[STUB] answer: 42 (parsed expression: ${input.take(30)})"
+    }
+}

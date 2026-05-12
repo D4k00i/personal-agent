@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Network for gRPC calls to master -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Media access for photo trigger observer -->
+    <!-- API < 33: legacy storage permission -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <!-- API 33+: scoped storage — explicit media image permission -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- Foreground service (persistent worker) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Health collection -->
+    <uses-permission android:name="android.permission.BATTERY_STATS" />
+    <uses-permission android:name="android.permission.POWER_THERMAL" />
+
+    <!-- Future: keep CPU awake during task execution -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Future: receive boot to auto-start service -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <application
+        android:name=".WorkerApp"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true">
+
+        <!-- Minimal launcher activity for debugging -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Foreground worker service -->
+        <service
+            android:name=".WorkerForegroundService"
+            android:foregroundServiceType="specialUse"
+            android:exported="false" />
+
+    </application>
+
+</manifest>

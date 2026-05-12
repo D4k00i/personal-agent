@@ -1,0 +1,36 @@
+# Android / Gradle
+*.iml
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+.navigation/
+captures/
+
+# IDE
+.idea/
+*.iws
+*.ipr
+.DS_Store
+
+# Keystore
+*.jks
+*.keystore
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Generated
+*.log
+
+# Gradle wrapper (keep the wrapper jar & props, ignore zip)
+gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
