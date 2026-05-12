@@ -9,6 +9,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
 import com.personalagent.agent.PersonalTask
 import com.personalagent.agent.PersonalTaskDao
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +30,8 @@ import kotlinx.coroutines.launch
  * the database changes (new task inserted, task completed, etc.).
  */
 class MainActivity : Activity() {
+
+    private val REQUEST_NOTIFICATION_PERMISSION = 1001
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var collectJob: Job? = null
@@ -274,6 +280,17 @@ class MainActivity : Activity() {
         intent.action = "STOP"
         stopService(intent)
         updateAgentStatus(false)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_NOTIFICATION_PERMISSION) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                startAgent()
+            } else {
+                Toast.makeText(this, "Cần quyền thông báo để chạy agent", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun updateAgentStatus(running: Boolean) {

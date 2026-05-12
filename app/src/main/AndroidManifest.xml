@@ -47,7 +47,11 @@
         <service
             android:name=".WorkerForegroundService"
             android:foregroundServiceType="specialUse"
-            android:exported="false" />
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="personal_agent_persistent_worker" />
+        </service>
 
     </application>
 
